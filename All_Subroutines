@@ -1,0 +1,1073 @@
+Sub GetOldPartXRef()
+
+'This macro simply grabs a vendor's partxrefvend data from an epicor connection
+'and pastes it into the active worksheet.
+
+'Data
+Dim VENDOR_ID As String
+Dim serv_conn As ADODB.Connection
+Set serv_conn = New ADODB.Connection
+Dim RS As New ADODB.Recordset
+Dim OldPartXRefQuery As String
+
+'Process
+'Get the vendor ID from an input box
+ VENDOR_ID = InputBox("Please enter the Vendor ID.", "Input Vendor ID")
+ 
+     
+'Set the connection string, allowing for the Connection.Open function to work
+serv_conn.ConnectionString = "Driver={SQL Server};Server=ERPSQL;Database=EpicorReports"
+'Left out UID and PWD--seems to automatically use windows authentication
+serv_conn.Open
+     
+'Now that a connection has been formed, a query can be made to bring in the old pricing data, setting up the pricelist to be pared down to only necessary parts.
+OldPartXRefQuery = "select PartXRef.Company, Vendor.VendorID, PartNum, VendPartNum from Epicor10.Erp.PartXRefVend As PartXRef LEFT JOIN Epicor10.Erp.Vendor As Vendor ON Vendor.VendorNum = PartXRef.VendorNum where Vendor.VendorID = '" & VENDOR_ID & "'"
+
+
+'Open the recordset to allow for the execution of the query
+Set RS.ActiveConnection = serv_conn
+RS.Open OldPartXRefQuery
+'Copy the data to the excel worksheet to allow for reference.
+ActiveSheet.Range("A2").CopyFromRecordset RS
+
+End Sub
+
+Sub GetCostDataForVendor()
+'This macro simply grabs a vendor's pricing data from an epicor connection
+'and pastes it into the active worksheet.
+
+'Data
+Dim VENDOR_ID As String
+Dim serv_conn As ADODB.Connection
+Set serv_conn = New ADODB.Connection
+Dim RS As New ADODB.Recordset
+
+'Process
+'Get the vendor ID from an input box
+ VENDOR_ID = InputBox("Please enter the Vendor ID.", "Input Vendor ID")
+ 
+     
+'Set the connection string, allowing for the Connection.Open function to work
+serv_conn.ConnectionString = "Driver={SQL Server};Server=ERPSQL;Database=EpicorReports"
+'Left out UID and PWD--seems to automatically use windows authentication
+serv_conn.Open
+     
+'Now that a connection has been formed, a query can be made to bring in the old pricing data, setting up the pricelist to be pared down to only necessary parts.
+OldPriceQueryLine1 = "SELECT DISTINCT     TOP (100) PERCENT VendPart.Company, VendPart.PartNum, VendPart.BaseUnitPrice, VendPart.PUM, VendPart.EffectiveDate, VendPart.VenPartNum,"
+OldPriceQueryLine2 = "                      VendPart.ConvFactor , VendPart.ExpirationDate, VendPart.DiscountPercent, Vendor.VendorID"
+OldPriceQueryLine3 = " FROM         Epicor10.Erp.VendPart AS VendPart LEFT OUTER JOIN"
+OldPriceQueryLine4 = "                       Epicor10.dbo.Vendor AS Vendor ON Vendor.Company = VendPart.Company AND VendPart.VendorNum = Vendor.VendorNum"
+'This line is where the vendor id is inserted into the query
+OldPriceQueryLine5 = " WHERE     (Vendor.VendorID IN ('" & VENDOR_ID & "'))ORDER BY VendPart.PartNum"
+OldPriceQuery = OldPriceQueryLine1 & OldPriceQueryLine2 & OldPriceQueryLine3 & OldPriceQueryLine4 & OldPriceQueryLine5
+
+'Open the recordset to allow for the execution of the query
+Set RS.ActiveConnection = serv_conn
+RS.Open OldPriceQuery
+'Copy the data to the excel worksheet to allow for reference.
+ActiveSheet.Range("A2").CopyFromRecordset RS
+
+
+End Sub
+
+
+Sub CreatePartXRef()
+'This macro takes the appropriate columns from a Price List worksheet and copies them to a PartXRefVend workbook
+'
+'This macro should only be instantiated from a price list file.
+
+'Turn off screen updating to ensure speedy execution
+Application.ScreenUpdating = False
+'Turn off alerts to automate saving the workbook as a macro-free workbook
+Application.DisplayAlerts = False
+'Create a string variable to hold the path to the PartXRefVend Template, allowing easy
+'reference to it in future
+Dim PartXRefPath As String
+PartXRefPath = "F:\Awesome Department\Excel Templates\PartXRefVend.xltx"
+'Create workbook variables for easy reference
+Dim PriceWB As Workbook
+Dim PartXWB As Workbook
+Set PriceWB = ActiveWorkbook
+'Create a new partXRef workbook so that columns can be transferred to it.
+Set PartXWB = Workbooks.Add(PartXRefPath)
+'Create a string to hold the vendor ID
+Dim VendorID As String
+Dim Result As Variant
+Dim NewFileName As String
+
+'Copy over the columns
+PriceWB.Sheets("NewPrices").Range("PriceTable[Company]").Copy
+PartXWB.Sheets("PartXRef").Range("A2").Paste
+PriceWB.Sheets("NewPrices").Range("PriceTable[VendorID]").Copy
+PartXWB.Sheets("PartXRef").Range("B2").Paste
+PriceWB.Sheets("NewPrices").Range("PriceTable[PartNum]").Copy
+PartXWB.Sheets("PartXRef").Range("C2").Paste
+PriceWB.Sheets("NewPrices").Range("PriceTable[VenPartNum]").Copy
+PartXWB.Sheets("PartXRef").Range("D2").Paste
+
+'Now that data is contained, create a file path to save the file.
+'Extract the VendorID to set as the file name.
+VendorID = PriceWB.Sheets("NewPrices").UsedRange.Cells(2, 10).Value
+'Create a file save path from the VendorID
+PartXRefFilePath = "F:\Awesome Department\Vendors\" & VendorID & "\PartXRef\" & VendorID & "2017PartXRef.xlsx"
+'Check to see if a file already exists with that name
+Do While Not Dir(PartXRefFilePath) = ""
+    Result = MsgBox("File already exists. Do you want to overwrite?", vbYesNo, "Do you want to overwrite?")
+    If Result = vbYes Then
+        Exit Do
+    Else
+        NewFileName = InputBox("Enter a new file name.  Leave out the extension. ")
+        NewFileName = NewFileName + ".xlsx"
+        PartXRefFilePath = "F:\Awesome Department \ Vendors \ " & VendorID & " \ PartXRef \ " & NewFileName
+    End If
+Loop
+
+'Finally, it can be saved!
+PartXWB.SaveAs Filename:=PartXRefFilePath
+
+'Now that the file is saved, the macro is nearly done and screen updating can be restored
+Application.ScreenUpdating = True
+Application.DisplayAlerts = False
+End Sub
+
+Sub FillOutAncillaryPriceColumns()
+
+Dim PriceWB As Workbook
+Set PriceWB = ActiveWorkbook
+Dim EffDate As Date
+Dim VENDOR_ID As String
+
+EffDate = InputBox("Please enter effective date", "EffectiveDate")
+VENDOR_ID = InputBox("Please enter vendor ID", "VendorID")
+Application.ScreenUpdating = False
+
+PriceWB.Sheets(1).UsedRange.Columns(10).Value = VENDOR_ID
+PriceWB.Sheets(1).UsedRange.Cells(1, 10).Value = "VendorID"
+PriceWB.Sheets(1).UsedRange.Columns(5).Value = EffDate
+PriceWB.Sheets(1).UsedRange.Cells(1, 5).Value = "EffectiveDate"
+PriceWB.Sheets(1).UsedRange.Columns(1).Value = "DTI01"
+PriceWB.Sheets(1).UsedRange.Cells(1, 1).Value = "Company"
+PriceWB.Sheets(1).UsedRange.Columns(8).Value = #1/1/2018#
+PriceWB.Sheets(1).UsedRange.Cells(1, 8).Value = "ExpirationDate"
+
+Application.ScreenUpdating = True
+End Sub
+
+
+Sub CorrectPUMsAndPrices()
+'Call this script from a price list file to convert prices and PUMs based on conversion factors.
+
+Application.ScreenUpdating = False
+Application.DisplayAlerts = False
+
+
+Dim PriceWB As Workbook
+Set PriceWB = ActiveWorkbook
+Dim PriceTable As ListObject
+Set PriceTable = PriceWB.Sheets("NewPrices").ListObjects("PriceTable")
+Dim PriceIndex As Integer
+Dim CorrectedPrice As Double
+Dim ConvFactor As Integer
+
+Dim PriceCheck As Variant
+PriceCheck = MsgBox("Should prices be corrected as well?", vbYesNo, "Price correct")
+
+For PriceIndex = 2 To PriceWB.Sheets(1).UsedRange.Rows.Count
+    If Not (PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 7).Value = 1) Then
+        
+        If (PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 7).Value = 12) Then
+            PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "DZ"
+            If PriceCheck = vbYes Then
+                'If the price should be updated for a different PUM, then it will be multiplied by the conversion factor.
+                CorrectedPrice = PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 3).Value * 12
+                PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 3).Value = CorrectedPrice
+            End If
+        Else
+                If PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "set" Then
+                    PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "SET"
+                ElseIf PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "ea" Then
+                    PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "EA"
+                ElseIf PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "c" Then
+                    PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "CS"
+                ElseIf PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "cs" Then
+                    PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "CS"
+                ElseIf PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "pr" Then
+                    PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "PR"
+                ElseIf PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "dz" Then
+                    PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "DZ"
+                ElseIf PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "bx" Then
+                    PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "BX"
+                ElseIf PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "pk" Then
+                    PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "CS"
+                Else
+                    PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "CS"
+                End If
+            If PriceCheck = vbYes Then
+                'If the price should be updated for a different PUM, then it will be multiplied by the conversion factor.
+                ConvFactor = PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 7).Value
+                CorrectedPrice = PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 3).Value * ConvFactor
+                PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 3).Value = CorrectedPrice
+            End If
+        End If
+    Else
+        If PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "PR" Or PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "pr" Or PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "Pr" Then
+            PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "PR"
+        Else
+            PriceWB.Sheets(1).UsedRange.Cells(PriceIndex, 4).Value = "EA"
+        End If
+    End If
+Next PriceIndex
+
+Application.ScreenUpdating = True
+Application.DisplayAlerts = True
+        
+
+End Sub
+
+Sub MakingListThatHasGapss()
+    Range("H:M").NumberFormat = "@"
+    Dim productsArray() As String
+    Dim TotalRows As Long
+    Dim i As Long
+    Dim newListArray() As String
+    Dim newListLength As Long
+    Dim gapArray() As String
+
+    TotalRows = Rows(Rows.Count).End(xlUp).Row
+    newListLength = Sheets("Sheet1").Range("A" & Rows.Count).End(xlUp).Row
+        
+    ReDim productsArray(1 To TotalRows)
+    ReDim newListArray(1 To newListLength)
+    ReDim gapArray(1 To 1)
+    
+' setting a value to hold the total rows in the spreadsheet
+    For i = 1 To TotalRows
+        productsArray(i) = Cells(i, 6).Value
+    Next
+   
+' setting a value to hold the length of the new list of products
+    For i = 1 To newListLength
+        newListArray(i) = Sheets("Sheet1").Cells(i, 1).Value
+    Next
+
+    
+' Creating an array that contains all cells with commas because they have potential to be gaps and will be searched through for matches to the new customers list of products to be added to the website
+    Dim possibleGaps() As String
+    ReDim possibleGaps(0 To 1, 1 To TotalRows)
+    Dim n As Integer
+    
+    For i = 1 To TotalRows
+        possibleGaps(0, i) = productsArray(i)
+        possibleGaps(1, i) = Range("B" & i).Value
+    Next
+  
+    Sheets("Final").Range("H:H").ClearContents
+    Sheets("Final").Range("I:I").ClearContents
+    Sheets("Final").Range("H1") = "Gap Products"
+    Sheets("Final").Range("I1") = "Gap Display SKU"
+    Dim workpls As Integer
+    Dim gaps(0 To 1, 1 To 999999) As String
+    Dim lastGapRow As Integer
+    Dim newCustomerArray(0 To 1, 1 To 999999) As String
+    For i = 1 To TotalRows
+        workpls = 0
+        Dim tempGapArray() As String
+        tempGapArray = Split(possibleGaps(0, i), ",")
+        
+                For n = 1 To UBound(tempGapArray) + 1
+                
+                    Dim isMatch As Integer
+                    isMatch = 0
+                    
+                    
+                            For t = 1 To newListLength
+                            
+                                If StrComp(newListArray(t), tempGapArray(n - 1), 1) = 0 Then
+                                    isMatch = isMatch + 1
+                                End If
+                            Next
+                            
+                    If isMatch > 0 Then
+                        workpls = workpls + 1
+                    End If
+                    
+                Next
+        If workpls > 0 Then
+            For p = 1 To UBound(tempGapArray) + 1
+                newCustomerArray(0, UBound(newCustomerArray, 1)) = tempGapArray(p - 1)
+                newCustomerArray(1, UBound(newCustomerArray, 2)) = Sheets("Final").Range("B" & i).Value
+                lastGapRow = Cells(Rows.Count, "H").End(xlUp).Row
+                Sheets("Final").Range("H" & lastGapRow + 1) = newCustomerArray(0, 1)
+                Sheets("Final").Range("I" & lastGapRow + 1) = newCustomerArray(1, 999999)
+            Next
+        End If
+    Next
+    
+    Dim compareRange As Range
+    For n = 1 To (UBound(newListArray) - 1)
+        Set compareRange = Range("H:H").Find(newListArray(n + 1), , xlValues, xlWhole)
+        If compareRange Is Nothing Then
+            addNewPN = Cells(Rows.Count, "H").End(xlUp).Row + 1
+            Sheets("Final").Range("H" & addNewPN) = newListArray(n + 1)
+        End If
+    Next
+
+
+End Sub
+
+
+Sub MasterMacro()
+'
+' This macro links createComparison and parePrices together.  It is not the master sword...it is the MasterMacro()
+'
+' This macro should be called from a PriceList template file.
+'
+' This macro is long and complicated.  It has multiple steps that are broken down into their own subroutines.
+
+'For the entire macro, sheet updating will be turned off to enhance process time
+Application.ScreenUpdating = False
+Application.DisplayAlerts = False
+ 
+'Portability variables
+'   The following variables hold the paths to the template files needed for the comparison file.
+Dim priceTemplatePath As String
+priceTemplatePath = "F:\Awesome Department\Excel Templates\PriceList.xltx"
+Dim compareTemplatePath As String
+compareTemplatePath = "F:\Awesome Department\Excel Templates\PriceComparison.xltx"
+Dim ComparisonDirectoryPath As String
+ComparisonDirectoryPath = "F:\Awesome Department\Price Comparison Files"
+Dim PriceListDirectoryPath As String
+PriceListDirectoryPath = "F:\Awesome Department\DTI Vendor Price Lists"
+
+'Subroutine 1: Ascertain the Vendor ID and insert appropriate data into the new DTI price list for the vendor, allowing comparison between
+'   old and new price lists.
+    
+    'Data Instantiation
+        Dim VENDOR_ID As String
+        Dim serv_conn As ADODB.Connection
+        Set serv_conn = New ADODB.Connection
+        Dim RS As New ADODB.Recordset
+        Dim OldPriceQuery As String
+        Dim OldPriceQueryLine1 As String, OldPriceQueryLine2 As String, OldPriceQueryLine3 As String, OldPriceQueryLine4 As String, OldPriceQueryLine5 As String
+        
+        
+    'Process
+        Sheets("NewPrices").Select
+        'Select the Vendor Id from the Vendor Id column of the new prices.  The second cell is selected because even if only one part is on the list it will always be populated.
+        'If this could be turned into a table column reference the code could perhaps be more portable.
+        VENDOR_ID = ActiveSheet.Range("J2")
+        
+        'Set the connection string, allowing for the Connection.Open function to work
+        serv_conn.ConnectionString = "Driver={SQL Server};Server=ERPSQL;Database=EpicorReports"
+        'Left out UID and PWD--seems to automatically use windows authentication
+        serv_conn.Open
+        
+        'Now that a connection has been formed, a query can be made to bring in the old pricing data, setting up the pricelist to be pared down to only necessary parts.
+        OldPriceQuery = "SELECT DISTINCT    TOP (100) PERCENT VendPart.Company, VendPart.PartNum, VendPart.BaseUnitPrice, VendPart.PUM, VendPart.EffectiveDate, XRef.VendPartNum,"
+        OldPriceQuery = OldPriceQuery & "                      VendPart.ConvFactor , VendPart.ExpirationDate, VendPart.DiscountPercent, Vendor.VendorID, PartPlant.BuyToOrder"
+        OldPriceQuery = OldPriceQuery & " FROM         Epicor10.Erp.VendPart AS VendPart LEFT OUTER JOIN"
+        OldPriceQuery = OldPriceQuery & "                       Epicor10.dbo.Vendor AS Vendor ON Vendor.Company = VendPart.Company AND VendPart.VendorNum = Vendor.VendorNum"
+        OldPriceQuery = OldPriceQuery & " LEFT JOIN Epicor10.Erp.PartPlant As PartPlant ON VendPart.PartNum = PartPlant.PartNum AND VendPart.VendorNum = PartPlant.VendorNum"
+        OldPriceQuery = OldPriceQuery & " LEFT JOIN Epicor10.Erp.PartXRefVend As XRef ON VendPart.PartNum = XRef.PartNum"
+        'This line is where the vendor id is inserted into the query
+        OldPriceQuery = OldPriceQuery & " WHERE     (Vendor.VendorID IN ('" & VENDOR_ID & "'))ORDER BY VendPart.PartNum"
+        
+        'Open the recordset to allow for the execution of the query
+        Set RS.ActiveConnection = serv_conn
+        RS.Open OldPriceQuery
+        'May be possible to truncate this operation
+        'Copy the data to the excel worksheet to allow for reference.
+        Sheets("OldPrices").Select
+        ActiveSheet.Range("A2").CopyFromRecordset RS
+        
+'Subroutine 2: To pare or not to pare?
+'This subroutine determines the amount of parts in both the old price list and the new price list.  It then gives this information to the user and asks if they want to
+'pare the prices down.  If yes, only matching vendor part numbers with the old data will be copied into the pared prices worksheet.  If no, the new data will simply be copied into the pared
+'prices worksheet.  The pared prices worksheet is where the macro will eventually copy prices into the price comparison worksheet.
+
+    'Data Instantiation
+    Dim NumOldParts As Long
+    Dim NumNewParts As Long
+    Dim Answer As Integer
+    
+    'Process
+    NumOldParts = Worksheets("OldPrices").UsedRange.Rows.Count - 1
+    NumNewParts = Worksheets("NewPrices").UsedRange.Rows.Count - 1
+    Answer = MsgBox("There are " & NumOldParts & " old parts and " & NumNewParts & " new parts. Do you want to pare the new price sheet?", vbYesNo + vbQuestion, "Optional Paring Operation")
+    
+    If Answer = vbYes Then
+        'Create a long variable to hold the bottom row address of the transferred prices.  This will allow referencing of the end of the range of prices and thus allow the table
+        ' to be resized to it.
+        Dim Bottom As Long
+        'This variable holds the part number from the old pricelist so that it can be checked for in the new one
+        Dim OldPricePartNum As String
+        'This boolean variable is set to true if a part number is found in the old pricing data.  It allow a for loop to end early when it has found the part
+        Dim ExistsInOld As Boolean
+                
+        'These variables hold the tables used in this subroutine.  Storing the tables will allow easy reference throughout the process.
+        Dim PriceTable As ListObject
+        Dim oldPriceTable As ListObject
+        Sheets("NewPrices").Select
+        Set PriceTable = ActiveSheet.ListObjects("PriceTable")
+        Sheets("OldPrices").Select
+        Set oldPriceTable = ActiveSheet.ListObjects("OldPriceTable")
+
+        'This variable holds a found cell.  Storing it will allow its row to be copied and placed in the pared prices worksheet.
+        Dim fCell As Range
+        Dim SearchArea As Range
+        Dim TableRange As Range
+        'Create a range to check for prices
+        Sheets("NewPrices").Select
+        Set SearchArea = ActiveSheet.ListObjects("PriceTable").ListColumns(6).Range
+        'Create variable to hold position of line to be pasted on.  This will create a consistent point of reference
+        'to paste the next row on, as looping variables are not guaranteed to have the right row number.
+        Dim j As Integer
+        j = 2
+        Dim k As Integer
+        k = 2
+
+        'Create variable to hold number of times the part number was not found in the new price list.
+        'This will allow a report to be given to the user of the missing parts from the new pricelist.
+        Dim CountNotFound As Integer
+        CountNotFound = 0
+
+
+        'Process
+        Sheets("OldPrices").Select
+        For i = 2 To oldPriceTable.Range.Rows.Count
+            'Store the partnumber so it can be checked for in the new price list
+            OldPricePartNum = Cells(i, 6).Value
+            'Go to the new price sheet to scan it.
+            Sheets("NewPrices").Select
+            'Set fcell to the found item, if it exists.  This allows the cell to be referenced and its row to be copied.
+            Set fCell = SearchArea.Cells.Find(OldPricePartNum)
+            'If it is found, paste it in the pared prices sheet to store it in a new price list to be updated in E10.
+            If Not fCell Is Nothing Then
+                ActiveSheet.Rows(fCell.Row).Copy
+                'Go to the pared prices sheet to add the parts that match between the new price list and old.
+                Sheets("ParedPrices").Select
+                Cells(j, 1).Select
+                'Increment j to get to the next row to be pasted on.
+                j = j + 1
+                Selection.PasteSpecial xlPasteAll
+            Else
+                'If the part is not found, increment the countNotFound variable to keep track of missing parts.
+                CountNotFound = CountNotFound + 1
+                'Go to the pared prices worksheet and make a column of missing partnumbers so that it can be available to a user
+                'for reference
+                Sheets("ParedPrices").Select
+                Cells(k, 11).Value = OldPricePartNum
+                'Increment k to get to the next cell to hold a missing part number
+                k = k + 1
+            End If
+            Sheets("OldPrices").Select
+        Next i
+
+        'Refresh the used range and then select it to re-size the table
+        Sheets("ParedPrices").Select
+        Sheets("ParedPrices").UsedRange
+        'Set bottom to the number of rows in the used range to allow the table to be resized.
+        Bottom = Worksheets("ParedPrices").UsedRange.Rows.Count
+
+        'Extend the table
+        ActiveSheet.ListObjects("ParedPriceTable").Resize Range("$A$1:$K" & Bottom)
+      
+        'Create a msgbox to inform the user of missing parts.
+        MsgBox CountNotFound & " parts were not found in the new price list" & ". " & NumNewParts - NumOldParts & " parts were deleted from the new price list."
+    Else
+        'If no desire to pare, simply copy the new prices worksheet into the pared prices
+        'Create a range variable to allow the header to be left off from copying
+        Dim rng
+        Set rng = Worksheets("NewPrices").UsedRange
+        Intersect(rng, rng.Offset(1)).Copy Worksheets("ParedPrices").Range("A2")
+    End If
+        
+'Subroutine 3: Comparison is the Death of Joy
+'Open a new priceComparison template file and give it a name based on user input.
+'Then copy over the appropriate columns from the vendor prices worksheet.
+'Finally, paste in the necessary data from Epicor for the three other sheets in the comparison workbook
+
+    'Data Instantiation
+    Dim ComparisonFileName As String
+    Dim CompareFile As Workbook
+    Dim ComparisonFilePath As String
+    Dim PriceFile As Workbook
+    Set PriceFile = ActiveWorkbook
+    
+    'Process
+    'Get a new file name for the comparison file to be saved
+    ComparisonFileName = InputBox("Enter a desired name for the new price comparison file. Do not include the extension.", "File Name")
+    'Create the full path for the comparison file so it can be checked if it exists already
+    ComparisonFilePath = ComparisonDirectoryPath & "\" & ComparisonFileName & ".xlsx"
+    If Len(Dir(ComparisonFilePath)) = 0 Then
+        'The file name is not already in use and the file may be created. Do nothing.
+    Else
+        While Not Len(Dir(ComparisonFilePath)) = 0
+            ComparisonFileName = InputBox("File already exists.  Please enter a different name.", "New File Name")
+            ComparisonFilePath = ComparisonDirectoryPath & ComparisonFileName
+        Wend
+    End If
+    'Now, create the file with the given name.
+    Set CompareFile = Workbooks.Add(compareTemplatePath)
+    'Save it in case of error
+    'CompareFile.SaveAs Filename:=ComparisonFilePath
+    
+    'Now copy over the new pricing data from the "ParedPrices" sheet from the price list file
+    'Starting with the company and vendor columns, as those are the first two on the comparison file
+    PriceFile.Sheets("ParedPrices").Range("ParedPriceTable[Company], ParedPriceTable[VendorID]").Copy
+    'Now copy into the first two columns of the price comparison sheet to start building it.
+    CompareFile.Worksheets("PriceView").Range("A2").PasteSpecial
+    
+    
+    'Copy the PartNum and VenPartNum columns over to the comparison file
+    PriceFile.Sheets("ParedPrices").Range("ParedPriceTable[PartNum], ParedPriceTable[VenPartNum]").Copy
+    CompareFile.Worksheets("PriceView").Range("C2").PasteSpecial
+    'Copy the PUM
+    PriceFile.Sheets("ParedPrices").Range("ParedPriceTable[PUM]").Copy
+    CompareFile.Worksheets("PriceView").Range("F2").PasteSpecial
+    'Copy the Cost column
+    PriceFile.Sheets("ParedPrices").Range("ParedPriceTable[BaseUnitPrice]").Copy
+    CompareFile.Worksheets("PriceView").Range("G2").PasteSpecial
+    
+        
+    'Query the previous pricing to allow for comparison
+    'Open the recordset to allow for the execution of the query
+        RS.Close
+        RS.Open OldPriceQuery
+        'May be possible to truncate this operation
+        'Copy the data to the excel worksheet to allow for reference.
+        CompareFile.Sheets("Previous Pricing").Select
+        ActiveSheet.Range("A2").CopyFromRecordset RS
+    
+    'Now that old data has been copied over, paste in the old price and stock item column
+    'to make price comparisons.
+    'To do this, a range must be created from the vendor part number and the old price.  The vendor part
+    ' number column must be shifted to achieve this.
+    CompareFile.Worksheets("Previous Pricing").Activate
+    'Perform the shift
+    Columns("F:F").Cut
+    Columns("C:C").Insert Shift:=xlToRight
+    'Create the named range
+    Range("C1:D2").Select
+    Range(Selection, Selection.End(xlDown)).Select
+    ActiveWorkbook.Names.Add Name:="OldPriceRange", RefersToR1C1:= _
+        "=OldPriceTable[[#All],[VenPartNum]:[NonStock]]"
+     ActiveWorkbook.Names.Add Name:="OldPriceRange2", RefersToR1C1:= _
+        "=OldPriceTable[[#All],[PartNum]:[BaseUnitPrice]]"
+    'Apply the vlookup for the old prices
+    CompareFile.Worksheets("PriceView").Select
+    Range("H2").Select
+    'Add a conditional that checks for the part number first, and if a match is not found then the venpartnum is checked.
+    'This allows the cost to be associated with the actual part in the cases that multiple DTI parts are associated with
+    'a single vendor part.
+    ActiveCell.FormulaR1C1 = "=IFERROR(VLOOKUP(RC[-5],OldPriceRange2, 3, FALSE), VLOOKUP(RC[-4],OldPriceRange,2, FALSE))"
+    
+    
+    'Now fill out the price change columns and percent change columns using formulas.  This allows human comparison.
+    CompareFile.Worksheets("PriceView").Range("ComparisonTable[$Change]").Formula = "=IFERROR(G2-H2,"""")"
+    CompareFile.Worksheets("PriceView").Range("ComparisonTable[%Change]").Formula = "=IFERROR(J2/G2,"""")"
+    
+    'Now apply a vlookup for stock identification
+    Range("K2").Select
+    ActiveCell.FormulaR1C1 = "=IFERROR(VLOOKUP(RC[-7],OldPriceRange,9, FALSE),"""")"
+    Range("ComparisonTable[Stock Item]").Copy
+    Range("ComparisonTable[Stock Item]").PasteSpecial xlPasteValues
+    'Modify the language from boolean to yes/no to make more readable
+    Worksheets("PriceView").Columns("K").Replace _
+        What:="False", Replacement:="Yes", _
+        SearchOrder:=xlByColumns, MatchCase:=False
+    Worksheets("PriceView").Columns("K").Replace _
+        What:="True", Replacement:="No", _
+        SearchOrder:=xlByColumns, MatchCase:=False
+    Worksheets("PriceView").Columns("K").Replace _
+        What:="", Replacement:="No", _
+        SearchOrder:=xlByColumns, MatchCase:=False
+    Worksheets("PriceView").Columns("K").Replace _
+        What:="0", Replacement:="No", _
+        SearchOrder:=xlByColumns, MatchCase:=False
+'Subroutine 4: Who's your data
+'Now, fill the remaining data sheets of the price comparison workbook to allow the remaining columns to be entered
+'in the price comparison worksheet
+    
+    'Fill the quantity shipped sheet.
+    'First, refresh the recordset.
+    RS.Close
+    'Now, create the query for quantity shipped.
+    Dim QtyShipQuery As String
+    QtyShipQuery = "SELECT     dbo.v_InvoiceRegisterForTurns.VendName, dbo.v_InvoiceRegisterForTurns.PartNum, SUM(dbo.v_InvoiceRegisterForTurns.OurShipQty) AS QuantityShipped" _
+                   & " FROM         Epicor10.Erp.Vendor INNER JOIN" _
+                   & " dbo.v_InvoiceRegisterForTurns ON Epicor10.Erp.Vendor.Name = dbo.v_InvoiceRegisterForTurns.VendName" _
+                   & " WHERE     (dbo.v_InvoiceRegisterForTurns.InvoiceDate > DATEADD(yyyy, - 1, GETDATE())) AND (Epicor10.Erp.Vendor.VendorID = '" & VENDOR_ID & "')" _
+                   & " GROUP BY dbo.v_InvoiceRegisterForTurns.VendName, dbo.v_InvoiceRegisterForTurns.PartNum"
+    RS.Open QtyShipQuery
+    'May be possible to truncate this operation
+    'Copy the data to the excel worksheet to allow for reference.
+    CompareFile.Sheets("VendorFilteredQtyShipped").Select
+    ActiveSheet.Range("A2").CopyFromRecordset RS
+        
+    'Fill the price change report data sheet
+    'First, refresh the recordset
+    RS.Close
+    'Now, create the query for the price change report data
+    Dim PriceChangeQuery As String
+    PriceChangeQuery = "SELECT     db_ddladmin.v_PartNumsWithContracts.Company, db_ddladmin.v_PartNumsWithContracts.PartNum, db_ddladmin.v_PartNumsWithContracts.ListCode, " _
+                       & " db_ddladmin.v_PartNumsWithContracts.NumberOfListCodes, db_ddladmin.v_QuoteNumLineForOpenQuotesCONCd.QuoteNumLine, " _
+                       & " db_ddladmin.v_QuoteNumLineForOpenQuotesCONCd.NumberOfQuoteNumLines , Epicor10.Erp.Vendor.VendorID " _
+                       & " FROM         Epicor10.Erp.Vendor INNER JOIN" _
+                       & " Epicor10.Erp.PartPlant ON Epicor10.Erp.Vendor.VendorNum = Epicor10.Erp.PartPlant.VendorNum RIGHT OUTER JOIN " _
+                       & " db_ddladmin.v_PartNumsWithContracts ON Epicor10.Erp.PartPlant.PartNum = db_ddladmin.v_PartNumsWithContracts.PartNum RIGHT OUTER JOIN " _
+                       & " db_ddladmin.v_QuoteNumLineForOpenQuotesCONCd ON Epicor10.Erp.PartPlant.Company = db_ddladmin.v_QuoteNumLineForOpenQuotesCONCd.Company AND" _
+                       & " Epicor10.Erp.PartPlant.PartNum = db_ddladmin.v_QuoteNumLineForOpenQuotesCONCd.PartNum" _
+                       & " WHERE     (Epicor10.Erp.Vendor.VendorID = '" & VENDOR_ID & "') AND (Epicor10.Erp.PartPlant.Plant = 'DIST') "
+    'Set the cursor location to client side, allowing proper data querying.
+    RS.CursorLocation = adUseClient
+    'Conduct the query to load it into the recordset
+    RS.Open PriceChangeQuery
+    'Now it can be loaded into its appropriate sheet for reference
+    CompareFile.Sheets("VendorFilteredPriceChangeReport").Select
+    ActiveSheet.Range("A2").CopyFromRecordset RS
+    
+    'Fill the recent contracts tab
+    'First, refresh the recordset
+    RS.Close
+    'Now, create the query for the most recent contract expirations
+    Dim ContractExpirationQuery
+    ContractExpirationQuery = "select PriceLstParts.Company, Vendor.VendorID, PartPlant.PartNum, PriceLstParts.ListCode, " _
+                              & " MAX(CASE WHEN PriceLst.EndDate IS NOT NULL THEN PriceLst.EndDate ELSE DATEADD(year, 1, PriceLst.StartDate) END) AS ExpirationDate" _
+                              & " from Epicor10.Erp.PartPlant As PartPlant LEFT JOIN Epicor10.Erp.PriceLstParts As PriceLstParts" _
+                              & " ON PartPlant.PartNum = PriceLstParts.PartNum LEFT JOIN Epicor10.Erp.Vendor as Vendor on Vendor.VendorNum = PartPlant.VendorNum" _
+                              & " LEFT JOIN Epicor10.Erp.PriceLst AS PriceLst ON PriceLst.ListCode = PriceLstParts.ListCode" _
+                              & " where Vendor.VendorID = '" & VENDOR_ID & "' AND PriceLstParts.ListCode IS NOT NULL" _
+                              & " GROUP BY PartPlant.PartNum, PriceLstParts.Company, Vendor.VendorID, PriceLstParts.ListCode"
+    'Conduct the query to load it into the recordset
+    RS.Open ContractExpirationQuery
+    'Now it can be loaded into its appropriate sheet for reference
+    CompareFile.Sheets("RecentContracts").Select
+    ActiveSheet.Range("A2").CopyFromRecordset RS
+    
+                                         
+'Subroutine 5: Numbers never lie
+'
+'Perform vertical lookups on the recently gathered data to fill out the price comparison sheet.
+'
+
+    'Create the named range for quantity shipped
+    
+    CompareFile.Worksheets("VendorFilteredQtyShipped").Select
+    Range("B2:C2").Select
+    Range(Selection, Selection.End(xlDown)).Select
+    ActiveWorkbook.Names.Add Name:="QtyRange", RefersToR1C1:= _
+        "=QtyShipTable[[#All],[PartNum]:[QuantityShipped]]"
+    
+    'Apply the vlookup for the 12MonthShipQty
+    CompareFile.Worksheets("PriceView").Select
+    Range("L2").Select
+    'An iferror handler has been added to this line.  The double quotes must be escaped using more double quotes for the second argument.
+    ActiveCell.FormulaR1C1 = "=IFERROR(VLOOKUP(RC[-9],QtyRange,2, FALSE),"""")"
+
+    'Create the named range for the price change report data
+    CompareFile.Worksheets("VendorFilteredPriceChangeReport").Select
+    Range("B2:G2").Select
+    Range(Selection, Selection.End(xlDown)).Select
+    ActiveWorkbook.Names.Add Name:="ReportRange", RefersToR1C1:= _
+        "=PriceChangeTable[[#All],[PartNum]:[NumberOfQuotes]]"
+    
+    'Apply the vlookups for the pricechange data
+    CompareFile.Worksheets("PriceView").Select
+    Range("M2").Select
+    ActiveCell.FormulaR1C1 = "=IFERROR(VLOOKUP(RC[-10], ReportRange, 2, FALSE),"""")"
+    Range("N2").Select
+    ActiveCell.FormulaR1C1 = "=IFERROR(VLOOKUP(RC[-11], ReportRange, 3, FALSE),"""")"
+    Range("O2").Select
+    ActiveCell.FormulaR1C1 = "=IFERROR(VLOOKUP(RC[-12], ReportRange, 4, FALSE),"""")"
+    Range("P2").Select
+    ActiveCell.FormulaR1C1 = "=IFERROR(VLOOKUP(RC[-13], ReportRange, 5, FALSE),"""")"
+    
+    'Create the named range for the price change report data
+    CompareFile.Worksheets("RecentContracts").Select
+    Range("C2:E2").Select
+    Range(Selection, Selection.End(xlDown)).Select
+    ActiveWorkbook.Names.Add Name:="ExpirationRange", RefersToR1C1:= _
+        "=ExpirationTable[[#All],[PartNum]:[Latest ExpirationDate]]"
+    
+    'Apply the vlookups for the pricechange data
+    CompareFile.Worksheets("PriceView").Select
+    Range("Q2").Select
+    ActiveCell.FormulaR1C1 = "=IFERROR(VLOOKUP(RC[-14], ExpirationRange, 3, FALSE),"""")"
+        
+    'If preferred, a capability to copy the vlookup values and paste back as simple values could be added here
+           
+        
+        
+        
+        
+
+
+'Turn on screen updating to return to normal operation parameters of excel
+Application.ScreenUpdating = True
+Application.DisplayAlerts = True
+
+End Sub
+
+Sub CheckForStockCosts()
+'This macro is intended to be used on a completed price list.  It will query E10 for stock and quote parts associated with a vendor
+' and scan the price list for these parts.  If they are not represented, the part numbers will be added to the end of the price list
+' and the user will be informed of the number of missing stock and quote costs.
+
+'Data Instantiation
+Dim PriceListWB As Workbook
+Set PriceListWB = ActiveWorkbook
+Dim PartNumColumn As Integer
+PartNumColumn = 2
+Dim StockAndQuoteQuery As String
+Dim CountMissing As Integer
+CountMissing = 0
+Dim InsertRow As Long
+Dim StockTable As ListObject
+Dim PriceTable As ListObject
+Dim VENDOR_ID As String
+Dim StockPartNum As String
+
+'Turn off screen updating to speed up macro
+Application.ScreenUpdating = False
+
+VENDOR_ID = InputBox("Please Enter Vendor ID")
+
+PriceListWB.Worksheets("StockAndQuoteParts").Select
+Set StockTable = ActiveSheet.ListObjects("StockTable")
+Set PriceTable = PriceListWB.Worksheets("NewPrices").ListObjects("PriceTable")
+
+Dim serv_conn As ADODB.Connection
+Set serv_conn = New ADODB.Connection
+Dim RS As New ADODB.Recordset
+'Set the connection string, allowing for the Connection.Open function to work
+serv_conn.ConnectionString = "Driver={SQL Server};Server=ERPSQL;Database=EpicorReports"
+'Left out UID and PWD--seems to automatically use windows authentication
+serv_conn.Open
+
+'Create the query of stock and quote parts to allow for checking of their inclusion in
+'the created pricelist
+StockAndQuoteQuery = "select Vendor.VendorID, PartPlant.PartNum, VendPart.VenPartNum" _
+                     & " from Epicor10.Erp.PartPlant As PartPlant LEFT JOIN Epicor10.Erp.Vendor AS Vendor" _
+                     & " ON PartPlant.VendorNum = Vendor.VendorNum LEFT JOIN Epicor10.Erp.VendPart As VendPart" _
+                     & " ON PartPlant.PartNum = VendPart.PartNum" _
+                     & " WHERE Vendor.VendorID = '" & VENDOR_ID & "' AND PartPlant.Plant = 'DIST' AND PartPlant.BuyToOrder = 'FALSE'" _
+                     & " Union " _
+                     & " select VendorID, PartNum, VenPartNum " _
+                     & " from db_ddladmin.v_VendorFilteredPriceChangeReportData " _
+                     & " WHERE VendorID = '" & VENDOR_ID & "'"
+     
+'Open the recordset to allow for the execution of the query
+Set RS.ActiveConnection = serv_conn
+RS.Open StockAndQuoteQuery
+
+'Copy the data to the StockAndQuote sheet to allow for reference.
+Sheets("StockAndQuoteParts").Select
+ActiveSheet.Range("A2").CopyFromRecordset RS
+        
+'Now, loop through the stock and quote parts, attempting to find them in the new prices sheet.  If they are not present, then
+' they will be added to the bottom of the price list for reference.
+        For i = 2 To StockTable.Range.Rows.Count
+            'Activate the stock prices sheet
+            Sheets("StockAndQuoteParts").Select
+            'Store the partnumber so it can be checked for in the new price list
+            StockPartNum = Cells(i, PartNumColumn).Value
+            'Go to the new price sheet to scan it.
+            Sheets("NewPrices").Select
+            'Set fcell to the found item, if it exists.  This search should take place only on the part number column,
+            'as that is the column that parts in part plant match with vendPart on.
+            Set fCell = Range("B:B").Find(StockPartNum)
+            'If it is not found, it should be added to the price list.
+            If fCell Is Nothing Then
+                'If the part is not found, increment the count missing variable to keep track of missing parts.
+                CountMissing = CountMissing + 1
+                InsertRow = PriceTable.Range.Rows.Count + 1
+                'Add the stock part to the price list.
+                Cells(InsertRow, PartNumColumn).Value = StockPartNum
+            End If
+        Next i
+ 'Now that the check has been done, output a message to user on the results so appropriate action can be taken.
+ If CountMissing = 0 Then
+    MsgBox ("Congratulations, all stock and quote parts are represented in the new price list.  A comparison sheet can now be made for approval by purchasing.")
+ ElseIf CountMissing = 1 Then
+    MsgBox "There is " & CountMissing & " stock or quote part missing in the price list. The part number has been added to the end of the price list.  Please ascertain cost"
+ Else
+    MsgBox "There are " & CountMissing & " stock or quote parts missing in the price list. The part numbers have been added to the end of the price list.  Please ascertain costs"
+ End If
+ 
+ 'Resume Screeen Updating
+Application.ScreenUpdating = True
+ 
+End Sub
+
+Sub CheckForPartPlantCosts()
+'This macro is intended to be used on a completed price list.  It will query E10 for partplant parts associated with a vendor
+' and scan the price list for these parts.  If they are not represented, the part numbers will be added to the end of the price list
+' and the user will be informed of the number of missing partplant costs.
+
+'This macro differs from the CheckForStockCosts() macro in that it checks for all of partplant parts, rather than just stock parts.
+
+'Data Instantiation
+Dim PriceListWB As Workbook
+Set PriceListWB = ActiveWorkbook
+Dim PartNumColumn As Integer
+PartNumColumn = 2
+Dim VenPartColumn As Integer
+VenPartColumn = 3
+Dim VenPartPriceListColumn As Integer
+VenPartPriceListColumn = 6
+Dim PartPlantQuery As String
+Dim CountMissing As Integer
+CountMissing = 0
+Dim InsertRow As Long
+Dim PartTable As ListObject
+Dim PriceTable As ListObject
+Dim VENDOR_ID As String
+Dim PartNum As String
+Dim VenPartNum As String
+
+'Turn off screen updating to speed up macro
+Application.ScreenUpdating = False
+
+VENDOR_ID = InputBox("Please Enter Vendor ID")
+
+PriceListWB.Worksheets("PartPlant").Select
+Set PartTable = ActiveSheet.ListObjects("PartTable")
+Set PriceTable = PriceListWB.Worksheets("NewPrices").ListObjects("PriceTable")
+
+Dim serv_conn As ADODB.Connection
+Set serv_conn = New ADODB.Connection
+Dim RS As New ADODB.Recordset
+'Set the connection string, allowing for the Connection.Open function to work
+serv_conn.ConnectionString = "Driver={SQL Server};Server=ERPSQL;Database=EpicorReports"
+'Left out UID and PWD--seems to automatically use windows authentication
+serv_conn.Open
+
+'Create the query of stock and quote parts to allow for checking of their inclusion in
+'the created pricelist
+PartPlantQuery = "select Vendor.VendorID, PartPlant.PartNum, VendPart.VenPartNum" _
+                     & " from Epicor10.Erp.PartPlant As PartPlant LEFT JOIN Epicor10.Erp.Vendor AS Vendor" _
+                     & " ON PartPlant.VendorNum = Vendor.VendorNum LEFT JOIN Epicor10.Erp.VendPart As VendPart" _
+                     & " ON PartPlant.PartNum = VendPart.PartNum" _
+                     & " WHERE Vendor.VendorID = '" & VENDOR_ID & "' AND PartPlant.Plant = 'DIST'" _
+                     
+'Open the recordset to allow for the execution of the query
+Set RS.ActiveConnection = serv_conn
+RS.Open PartPlantQuery
+
+'Copy the data to the StockAndQuote sheet to allow for reference.
+Sheets("PartPlant").Select
+ActiveSheet.Range("A2").CopyFromRecordset RS
+        
+'Now, loop through the stock and quote parts, attempting to find them in the new prices sheet.  If they are not present, then
+' they will be added to the bottom of the price list for reference.
+        For i = 2 To PartTable.Range.Rows.Count
+            'Activate the stock prices sheet
+            Sheets("PartPlant").Select
+            'Store the partnumber so it can be checked for in the new price list
+            PartNum = Cells(i, PartNumColumn).Value
+            VenPartNum = Cells(i, VenPartColumn).Value
+            'Go to the new price sheet to scan it.
+            Sheets("NewPrices").Select
+            'Set fcell to the found item, if it exists.  This search should take place only on the part number column,
+            'as that is the column that parts in part plant match with vendPart on.
+            Set fCell = Range("B:B").Find(PartNum)
+            'If it is not found, it should be added to the price list.
+            If fCell Is Nothing Then
+                'If the part is not found, increment the count missing variable to keep track of missing parts.
+                CountMissing = CountMissing + 1
+                InsertRow = PriceTable.Range.Rows.Count + 1
+                'Add the stock part to the price list.
+                Cells(InsertRow, PartNumColumn).Value = PartNum
+                Cells(InsertRow, VenPartPriceListColumn).Value = VenPartNum
+            End If
+        Next i
+ 'Now that the check has been done, output a message to user on the results so appropriate action can be taken.
+ If CountMissing = 0 Then
+    MsgBox ("Congratulations, all vendor parts are represented in the new price list.")
+ ElseIf CountMissing = 1 Then
+    MsgBox "There is " & CountMissing & " part missing in the price list. The part number has been added to the end of the price list.  Please ascertain cost"
+ Else
+    MsgBox "There are " & CountMissing & " parts missing in the price list. The part numbers have been added to the end of the price list.  Please ascertain costs"
+ End If
+ 
+ 'Resume Screeen Updating
+Application.ScreenUpdating = True
+ 
+End Sub
+
+
+Sub SortAndPare()
+'This macro is intended to operate on a price list that has been created by transcription from a vendor pricelist.
+' This will sort prices based only on their existence in vendpart.
+
+Application.ScreenUpdating = False
+Application.DisplayAlerts = False
+ 
+ 
+'Data Instantiation
+        Dim PartNumColumn As Integer
+        PartNumColumn = 2
+        Dim VENDOR_ID As String
+        Dim serv_conn As ADODB.Connection
+        Set serv_conn = New ADODB.Connection
+        Dim RS As New ADODB.Recordset
+        Dim OldPriceQuery As String
+        Dim OldPriceQueryLine1 As String, OldPriceQueryLine2 As String, OldPriceQueryLine3 As String, OldPriceQueryLine4 As String, OldPriceQueryLine5 As String
+'These variables hold the tables used in this subroutine.  Storing the tables will allow easy reference throughout the process.
+        Dim PriceTable As ListObject
+        Dim oldPriceTable As ListObject
+        Dim NewPartTable As ListObject
+        Dim MissingPartTable As ListObject
+        Sheets("NewPrices").Select
+        Set PriceTable = ActiveSheet.ListObjects("PriceTable")
+        Sheets("OldPrices").Select
+        Set oldPriceTable = ActiveSheet.ListObjects("OldPriceTable")
+        Sheets("New Parts").Select
+        Set NewPartTable = ActiveSheet.ListObjects("NewPartTable")
+        Sheets("Missing Old Parts").Select
+        Set MissingPartTable = ActiveSheet.ListObjects("MissingPartTable")
+ 
+ 
+'Subroutine 1: Ascertain the Vendor ID and insert appropriate data into the new DTI price list for the vendor, allowing comparison between
+'   old and new price lists.
+    
+          
+    'Process
+        Sheets("NewPrices").Select
+        'Select the Vendor Id from the Vendor Id column of the new prices.  The second cell is selected because even if only one part is on the list it will always be populated.
+        'If this could be turned into a table column reference the code could perhaps be more portable.
+        VENDOR_ID = ActiveSheet.Range("J2")
+        'Check to ensure that the Vendor ID was successfuly copied
+        If VENDOR_ID = "" Then
+            VENDOR_ID = InputBox("Vendor ID Could not be found. Please enter it now.", "Vendor ID")
+            ActiveSheet.Range(Range("J2"), Range("J2").End(xlDown)).Select
+            Selection = VENDOR_ID
+        End If
+        
+        
+        'Set the connection string, allowing for the Connection.Open function to work
+        serv_conn.ConnectionString = "Driver={SQL Server};Server=ERPSQL;Database=EpicorReports"
+        'Left out UID and PWD--seems to automatically use windows authentication
+        serv_conn.Open
+        
+        'Now that a connection has been formed, a query can be made to bring in the old pricing data, setting up the pricelist to be pared down to only necessary parts.
+        OldPriceQuery = "SELECT DISTINCT    TOP (100) PERCENT VendPart.Company, VendPart.PartNum, VendPart.BaseUnitPrice, VendPart.PUM, VendPart.EffectiveDate, XRef.VendPartNum,"
+        OldPriceQuery = OldPriceQuery & "                      VendPart.ConvFactor , VendPart.ExpirationDate, VendPart.DiscountPercent, Vendor.VendorID"
+        OldPriceQuery = OldPriceQuery & " FROM         Epicor10.Erp.VendPart AS VendPart LEFT OUTER JOIN"
+        OldPriceQuery = OldPriceQuery & "                       Epicor10.dbo.Vendor AS Vendor ON Vendor.Company = VendPart.Company AND VendPart.VendorNum = Vendor.VendorNum"
+        OldPriceQuery = OldPriceQuery & " LEFT JOIN Epicor10.Erp.PartXRefVend As XRef ON VendPart.PartNum = XRef.PartNum"
+        'This line is where the vendor id is inserted into the query
+        OldPriceQuery = OldPriceQuery & " WHERE     (Vendor.VendorID IN ('" & VENDOR_ID & "'))ORDER BY VendPart.PartNum"
+     
+       
+        'Open the recordset to allow for the execution of the query
+        Set RS.ActiveConnection = serv_conn
+        RS.Open OldPriceQuery
+        'May be possible to truncate this operation
+        'Copy the data to the excel worksheet to allow for reference.
+        Sheets("OldPrices").Select
+        ActiveSheet.Range("A2").CopyFromRecordset RS
+        
+'Subroutine 2: To pare or not to pare?
+'This subroutine determines the amount of parts in both the old price list and the new price list.  Only matching vendor part numbers with the
+' old data will be copied into the pared prices worksheet.  If no, the new data will simply be copied into the pared
+' prices worksheet.  The pared prices worksheet is where the macro will eventually copy prices into the price comparison worksheet.
+
+    'Data Instantiation
+    Dim NumOldPrices As Long
+    Dim NumNewPrices As Long
+    'Create an array to hold an entire row.  This will allow for row swapping.
+    Dim RowArray() As Variant
+    
+    'Process
+    NumOldPrices = Worksheets("OldPrices").UsedRange.Rows.Count - 1
+    NumNewPrices = Worksheets("NewPrices").UsedRange.Rows.Count - 1
+    MsgBox ("There are " & NumOldPrices & " old parts and " & NumNewPrices & " new parts.")
+    
+    
+        'Create a long variable to hold the bottom row address of the transferred prices.  This will allow referencing of the end of the range of prices and thus allow the table
+        ' to be resized to it.
+        Dim Bottom As Long
+        'This variable holds the part number from the old pricelist so that it can be checked for in the new one
+        Dim OldPricePartNum As String
+        'This boolean variable is set to true if a part number is found in the old pricing data.  It allow a for loop to end early when it has found the part
+        Dim ExistsInOld As Boolean
+        'Create a variable to count the amount of new parts
+        Dim NumNewParts As Integer
+        
+        'This variable holds a found cell.  Storing it will allow its row to be copied and placed in the pared prices worksheet.
+        Dim fCell As Range
+        Dim SearchArea As Range
+        Dim TableRange As Range
+        'Create a range to check for prices
+        Sheets("NewPrices").Select
+        Set SearchArea = ActiveSheet.ListObjects("PriceTable").ListColumns(PartNumColumn).Range
+        'Create variable to hold position of line to be pasted on.  This will create a consistent point of reference
+        'to paste the next row on, as looping variables are not guaranteed to have the right row number.
+        Dim j As Integer
+        j = 2
+        Dim k As Integer
+        k = 2
+        Dim FoundRowNum As Integer
+        
+        'Create variable to hold number of times the part number was not found in the new price list.
+        'This will allow a report to be given to the user of the missing parts from the new pricelist.
+        Dim CountNotFound As Integer
+        CountNotFound = 0
+
+
+        'Part Process
+        Sheets("OldPrices").Select
+        For i = 2 To oldPriceTable.Range.Rows.Count
+            'Store the partnumber so it can be checked for in the new price list
+            OldPricePartNum = Cells(i, 2).Value
+            'Go to the new price sheet to scan it.
+            Sheets("NewPrices").Select
+            'Set fcell to the found item, if it exists.  This allows the cell to be referenced and its row to be copied.
+            Set fCell = SearchArea.Cells.Find(OldPricePartNum)
+            'If it is found, paste it in the pared prices sheet to store it in a new price list to be updated in E10.
+            If Not fCell Is Nothing Then
+                     
+                'Re-order the price list by swapping the found row to the top.  This will put all old parts on the top of the price list
+                ' and new parts on the bottom, allowing easy copying and pasting.
+                Rows("2:2").Select
+                Selection.Insert Shift:=xlDown, CopyOrigin:=xlFormatFromLeftOrAbove
+                ActiveSheet.Rows(2).Value = ActiveSheet.Rows(fCell.Row).Value
+                ActiveSheet.Rows(fCell.Row).Select
+                Selection.Delete Shift:=xlUp
+            Else
+                'If the part is not found, increment the countNotFound variable to keep track of missing parts.
+                CountNotFound = CountNotFound + 1
+                Sheets("OldPrices").Rows(i).Copy
+                Sheets("Missing Old Parts").Rows(j).PasteSpecial
+                
+                'Increment j to get to the next row for a missing part
+                j = j + 1
+                
+            End If
+            Sheets("OldPrices").Select
+        Next i
+        NumNewParts = Worksheets("NewPrices").UsedRange.Rows.Count - 1 - (NumOldPrices - CountNotFound)
+        'Copy over the new parts to the appropriate sheet
+        Worksheets("NewPrices").Rows(Worksheets("NewPrices").UsedRange.Rows.Count - NumNewParts + 1 & ":" & Worksheets("NewPrices").UsedRange.Rows.Count).Copy
+        Worksheets("New Parts").Range("A2").PasteSpecial
+        Worksheets("NewPrices").Rows("2:" & Worksheets("NewPrices").UsedRange.Rows.Count - NumNewParts).Copy
+        Worksheets("ParedPrices").Range("A2").PasteSpecial
+        
+        'Refresh the used range and then select it to re-size the table
+        'Sheets("ParedPrices").Select
+        'Sheets("ParedPrices").UsedRange
+        'Set bottom to the number of rows in the used range to allow the table to be resized.
+        'Bottom = Worksheets("ParedPrices").UsedRange.Rows.Count
+
+        'Extend the table for the new parts
+        Worksheets("Missing Old Parts").Select
+        ActiveSheet.ListObjects("MissingPartTable").Resize Range("$A$1:$K" & ActiveSheet.UsedRange.Rows.Count)
+      
+        'Create a msgbox to inform the user of missing parts.
+        MsgBox CountNotFound & " parts were not found in the new price list" & ". " & NumNewParts & " parts were deleted from the new price list."
+        
+
+
+End Sub
